@@ -1,0 +1,34 @@
+name: Notify AltStore repo
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch to RepoIPAs
+        env:
+          TOKEN: ${{ secrets.ALTSTORE_REPO_TOKEN }}
+          RELEASE: ${{ toJson(github.event.release) }}
+        run: |
+          PAYLOAD=$(echo "$RELEASE" | jq -c --arg app_id "com.spotify.client" '
+            (.assets | map(select(.name | endswith(".ipa"))) | first) as $ipa
+            | {
+                event_type: "new-release",
+                client_payload: {
+                  app_id: $app_id,
+                  version: (.tag_name | ltrimstr("v")),
+                  date: .published_at[0:10],
+                  download_url: $ipa.browser_download_url,
+                  size: $ipa.size,
+                  description: (.name // .tag_name)
+                }
+              }')
+
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/M4th12/RepoIPAs/dispatches \
+            -d "$PAYLOAD"
